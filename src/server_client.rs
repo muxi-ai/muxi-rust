@@ -1,4 +1,4 @@
-use crate::{auth::Auth, errors::{MuxiError, Result}, SseEvent, VERSION};
+use crate::{auth::Auth, errors::{MuxiError, Result}, SseEvent, VERSION, version_check};
 use reqwest::Client;
 use serde_json::{json, Value};
 use std::time::Duration;
@@ -35,6 +35,7 @@ pub struct ServerConfig {
     pub secret_key: String,
     pub timeout: u64,
     pub max_retries: u32,
+    pub(crate) app: Option<String>,  // Internal: for Console telemetry
 }
 
 impl ServerConfig {
@@ -45,6 +46,7 @@ impl ServerConfig {
             secret_key: secret_key.to_string(),
             timeout: 30,
             max_retries: 0,
+            app: None,
         }
     }
 }
@@ -277,6 +279,14 @@ impl ServerClient {
     
     async fn handle_response(&self, resp: reqwest::Response) -> Result<Value> {
         let status = resp.status().as_u16();
+        
+        // Check for SDK updates (non-blocking, once per process)
+        let headers: std::collections::HashMap<String, String> = resp.headers()
+            .iter()
+            .filter_map(|(k, v)| v.to_str().ok().map(|s| (k.to_string(), s.to_string())))
+            .collect();
+        version_check::check_for_updates(&headers);
+        
         let retry_after = resp.headers()
             .get("Retry-After")
             .and_then(|v| v.to_str().ok())

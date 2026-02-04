@@ -1,4 +1,4 @@
-use crate::{errors::{MuxiError, Result}, SseEvent, VERSION};
+use crate::{errors::{MuxiError, Result}, SseEvent, VERSION, version_check};
 use reqwest::Client;
 use serde_json::{json, Value};
 use std::time::Duration;
@@ -13,6 +13,7 @@ pub struct FormationConfig {
     pub client_key: Option<String>,
     pub admin_key: Option<String>,
     pub timeout: u64,
+    pub(crate) app: Option<String>,  // Internal: for Console telemetry
 }
 
 impl FormationConfig {
@@ -24,6 +25,7 @@ impl FormationConfig {
             client_key: Some(client_key.to_string()),
             admin_key: Some(admin_key.to_string()),
             timeout: 30,
+            app: None,
         }
     }
     
@@ -35,6 +37,7 @@ impl FormationConfig {
             client_key: Some(client_key.to_string()),
             admin_key: Some(admin_key.to_string()),
             timeout: 30,
+            app: None,
         }
     }
 }
@@ -44,6 +47,7 @@ pub struct FormationClient {
     base_url: String,
     client_key: Option<String>,
     admin_key: Option<String>,
+    app: Option<String>,
     client: Client,
 }
 
@@ -61,7 +65,7 @@ impl FormationClient {
             .timeout(Duration::from_secs(config.timeout))
             .build()?;
         
-        Ok(Self { base_url, client_key: config.client_key, admin_key: config.admin_key, client })
+        Ok(Self { base_url, client_key: config.client_key, admin_key: config.admin_key, app: config.app, client })
     }
     
     // Health / Status
@@ -253,6 +257,7 @@ impl FormationClient {
             .header("X-Muxi-Idempotency-Key", uuid::Uuid::new_v4().to_string())
             .header("Accept", "application/json");
         
+        if let Some(app) = &self.app { req = req.header("X-Muxi-App", app); }
         if use_admin {
             if let Some(key) = &self.admin_key { req = req.header("X-MUXI-ADMIN-KEY", key); }
         } else {
@@ -265,6 +270,14 @@ impl FormationClient {
     
     async fn handle_response(&self, resp: reqwest::Response) -> Result<Value> {
         let status = resp.status().as_u16();
+        
+        // Check for SDK updates (non-blocking, once per process)
+        let headers: std::collections::HashMap<String, String> = resp.headers()
+            .iter()
+            .filter_map(|(k, v)| v.to_str().ok().map(|s| (k.to_string(), s.to_string())))
+            .collect();
+        version_check::check_for_updates(&headers);
+        
         let retry_after = resp.headers().get("Retry-After").and_then(|v| v.to_str().ok()).and_then(|v| v.parse().ok());
         let body = resp.text().await.unwrap_or_default();
         

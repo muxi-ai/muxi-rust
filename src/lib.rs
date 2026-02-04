@@ -3,6 +3,7 @@ pub mod errors;
 pub mod server_client;
 pub mod formation_client;
 pub mod webhook;
+pub(crate) mod version_check;
 
 pub use auth::Auth;
 pub use errors::*;

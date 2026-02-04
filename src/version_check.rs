@@ -22,7 +22,7 @@ type VersionCache = HashMap<String, VersionEntry>;
 
 pub fn check_for_updates(headers: &HashMap<String, String>) {
     CHECK_ONCE.call_once(|| {
-        if !is_dev_mode() {
+        if notifications_disabled() {
             return;
         }
 
@@ -48,8 +48,8 @@ pub fn check_for_updates(headers: &HashMap<String, String>) {
     });
 }
 
-fn is_dev_mode() -> bool {
-    std::env::var("MUXI_DEBUG").map(|v| v == "1").unwrap_or(false)
+fn notifications_disabled() -> bool {
+    std::env::var("MUXI_SDK_VERSION_NOTIFICATION").map(|v| v == "0").unwrap_or(false)
 }
 
 fn get_cache_path() -> Option<PathBuf> {

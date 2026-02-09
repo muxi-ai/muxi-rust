@@ -13,6 +13,7 @@ pub struct FormationConfig {
     pub client_key: Option<String>,
     pub admin_key: Option<String>,
     pub timeout: u64,
+    pub mode: String,  // "live" (default) or "draft" for local dev
     pub(crate) app: Option<String>,  // Internal: for Console telemetry
 }
 
@@ -25,6 +26,7 @@ impl FormationConfig {
             client_key: Some(client_key.to_string()),
             admin_key: Some(admin_key.to_string()),
             timeout: 30,
+            mode: "live".to_string(),
             app: None,
         }
     }
@@ -37,6 +39,7 @@ impl FormationConfig {
             client_key: Some(client_key.to_string()),
             admin_key: Some(admin_key.to_string()),
             timeout: 30,
+            mode: "live".to_string(),
             app: None,
         }
     }
@@ -56,7 +59,8 @@ impl FormationClient {
         let base_url = if let Some(base) = config.base_url {
             base.trim_end_matches('/').to_string()
         } else if let (Some(server), Some(formation)) = (&config.server_url, &config.formation_id) {
-            format!("{}/api/{}/v1", server.trim_end_matches('/'), formation)
+            let prefix = if config.mode == "draft" { "draft" } else { "api" };
+            format!("{}/{}/{}/v1", server.trim_end_matches('/'), prefix, formation)
         } else {
             return Err(MuxiError::Connection("Must provide base_url or server_url+formation_id".to_string()));
         };

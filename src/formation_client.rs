@@ -244,7 +244,8 @@ impl FormationClient {
     }
     
     fn build_url(&self, path: &str, params: Option<Vec<(&str, String)>>) -> String {
-        let mut url = format!("{}{}", self.base_url, if path.starts_with('/') { path } else { &format!("/{}", path) });
+        let full_path = if path.starts_with('/') { path.to_string() } else { format!("/{}", path) };
+        let mut url = format!("{}{}", self.base_url, full_path);
         if let Some(p) = params {
             if !p.is_empty() {
                 url.push('?');

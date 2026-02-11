@@ -18,7 +18,7 @@ tokio = { version = "1", features = ["full"] }
 ### ServerClient
 
 ```rust
-use muxi::{ServerClient, ServerConfig};
+use muxi_rust::{ServerClient, ServerConfig};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -39,7 +39,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 ### FormationClient
 
 ```rust
-use muxi::{FormationClient, FormationConfig};
+use muxi_rust::{FormationClient, FormationConfig};
 use serde_json::json;
 
 #[tokio::main]
@@ -75,7 +75,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 ## Error Handling
 
 ```rust
-use muxi::errors::*;
+use muxi_rust::errors::*;
 
 match result {
     Err(MuxiError::Authentication { code, message, .. }) => { /* 401 */ }
@@ -92,7 +92,7 @@ match result {
 ## Webhook Verification
 
 ```rust
-use muxi::webhook::{verify_signature, parse};
+use muxi_rust::webhook::{verify_signature, parse};
 
 fn handle_webhook(payload: &str, signature: &str, secret: &str) -> Result<(), Box<dyn std::error::Error>> {
     if !verify_signature(payload, signature, secret, None)? {

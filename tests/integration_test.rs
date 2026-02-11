@@ -28,7 +28,7 @@ fn skip_if_not_configured() -> bool {
 #[cfg(test)]
 mod server_tests {
     use super::*;
-    use muxi::{ServerClient, ServerConfig};
+    use muxi_rust::{ServerClient, ServerConfig};
 
     fn get_client() -> Option<ServerClient> {
         if skip_if_not_configured() {
@@ -67,7 +67,7 @@ mod server_tests {
 #[cfg(test)]
 mod formation_tests {
     use super::*;
-    use muxi::{FormationClient, FormationConfig};
+    use muxi_rust::{FormationClient, FormationConfig};
 
     fn get_client() -> Option<FormationClient> {
         if skip_if_not_configured() {

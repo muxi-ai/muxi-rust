@@ -24,7 +24,7 @@ tokio = { version = "1", features = ["full"] }
 ### Server Management (Control Plane)
 
 ```rust
-use muxi::{ServerClient, ServerConfig};
+use muxi_rust::{ServerClient, ServerConfig};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -50,7 +50,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 ### Formation Usage (Runtime API)
 
 ```rust
-use muxi::{FormationClient, FormationConfig};
+use muxi_rust::{FormationClient, FormationConfig};
 use serde_json::json;
 
 #[tokio::main]
@@ -94,7 +94,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 ## Error Handling
 
 ```rust
-use muxi::errors::*;
+use muxi_rust::errors::*;
 
 match client.chat(payload, user_id).await {
     Ok(response) => println!("{:?}", response),

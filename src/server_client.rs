@@ -100,11 +100,9 @@ impl ServerClient {
         let config = self.config.clone();
         stream! {
             let url = format!("{}{}", config.url, path);
-            let (sig, ts) = Auth::generate_hmac_signature("POST", &path, &config.key_id, &config.secret_key);
-            
             let resp = client.post(&url)
                 .header("X-Muxi-SDK", format!("rust/{}", VERSION))
-                .header("Authorization", Auth::build_auth_header(&config.key_id, &sig, &ts))
+                .header("Authorization", Auth::build_auth_header(&config.key_id, &config.secret_key, "POST", &path))
                 .header("Accept", "text/event-stream")
                 .header("Content-Type", "application/json")
                 .json(&payload)
@@ -127,11 +125,9 @@ impl ServerClient {
         let config = self.config.clone();
         stream! {
             let url = format!("{}{}", config.url, path);
-            let (sig, ts) = Auth::generate_hmac_signature("GET", &path, &config.key_id, &config.secret_key);
-            
             let resp = client.get(&url)
                 .header("X-Muxi-SDK", format!("rust/{}", VERSION))
-                .header("Authorization", Auth::build_auth_header(&config.key_id, &sig, &ts))
+                .header("Authorization", Auth::build_auth_header(&config.key_id, &config.secret_key, "GET", &path))
                 .header("Accept", "text/event-stream")
                 .send()
                 .await;
@@ -155,8 +151,7 @@ impl ServerClient {
             .header("Accept", "application/json");
         
         if auth {
-            let (sig, ts) = Auth::generate_hmac_signature("GET", path, &self.config.key_id, &self.config.secret_key);
-            req = req.header("Authorization", Auth::build_auth_header(&self.config.key_id, &sig, &ts));
+            req = req.header("Authorization", Auth::build_auth_header(&self.config.key_id, &self.config.secret_key, "GET", path));
         }
         
         let resp = req.send().await?;
@@ -167,15 +162,13 @@ impl ServerClient {
     
     async fn rpc_post(&self, path: &str, body: Value) -> Result<Value> {
         let url = format!("{}{}", self.config.url, path);
-        let (sig, ts) = Auth::generate_hmac_signature("POST", path, &self.config.key_id, &self.config.secret_key);
-        
         let resp = self.client.post(&url)
             .header("X-Muxi-SDK", format!("rust/{}", VERSION))
             .header("X-Muxi-Client", format!("rust/{}", VERSION))
             .header("X-Muxi-Idempotency-Key", uuid::Uuid::new_v4().to_string())
             .header("Accept", "application/json")
             .header("Content-Type", "application/json")
-            .header("Authorization", Auth::build_auth_header(&self.config.key_id, &sig, &ts))
+            .header("Authorization", Auth::build_auth_header(&self.config.key_id, &self.config.secret_key, "POST", path))
             .json(&body)
             .send()
             .await?;
@@ -185,14 +178,12 @@ impl ServerClient {
     
     async fn rpc_delete(&self, path: &str) -> Result<Value> {
         let url = format!("{}{}", self.config.url, path);
-        let (sig, ts) = Auth::generate_hmac_signature("DELETE", path, &self.config.key_id, &self.config.secret_key);
-        
         let resp = self.client.delete(&url)
             .header("X-Muxi-SDK", format!("rust/{}", VERSION))
             .header("X-Muxi-Client", format!("rust/{}", VERSION))
             .header("X-Muxi-Idempotency-Key", uuid::Uuid::new_v4().to_string())
             .header("Accept", "application/json")
-            .header("Authorization", Auth::build_auth_header(&self.config.key_id, &sig, &ts))
+            .header("Authorization", Auth::build_auth_header(&self.config.key_id, &self.config.secret_key, "DELETE", path))
             .send()
             .await?;
         
@@ -202,11 +193,9 @@ impl ServerClient {
     fn stream_sse_post<'a>(&'a self, path: &'a str, body: Value) -> impl Stream<Item = Result<SseEvent>> + 'a {
         stream! {
             let url = format!("{}{}", self.config.url, path);
-            let (sig, ts) = Auth::generate_hmac_signature("POST", path, &self.config.key_id, &self.config.secret_key);
-            
             let resp = self.client.post(&url)
                 .header("X-Muxi-SDK", format!("rust/{}", VERSION))
-                .header("Authorization", Auth::build_auth_header(&self.config.key_id, &sig, &ts))
+                .header("Authorization", Auth::build_auth_header(&self.config.key_id, &self.config.secret_key, "POST", path))
                 .header("Accept", "text/event-stream")
                 .header("Content-Type", "application/json")
                 .json(&body)
@@ -242,11 +231,9 @@ impl ServerClient {
     fn stream_sse_get<'a>(&'a self, path: &'a str) -> impl Stream<Item = Result<SseEvent>> + 'a {
         stream! {
             let url = format!("{}{}", self.config.url, path);
-            let (sig, ts) = Auth::generate_hmac_signature("GET", path, &self.config.key_id, &self.config.secret_key);
-            
             let resp = self.client.get(&url)
                 .header("X-Muxi-SDK", format!("rust/{}", VERSION))
-                .header("Authorization", Auth::build_auth_header(&self.config.key_id, &sig, &ts))
+                .header("Authorization", Auth::build_auth_header(&self.config.key_id, &self.config.secret_key, "GET", path))
                 .header("Accept", "text/event-stream")
                 .send()
                 .await;

@@ -1,12 +1,12 @@
 [package]
-name = "muxi"
+name = "muxi-rust"
 version = "0.1.0"
 edition = "2021"
 authors = ["MUXI AI <support@muxi.ai>"]
 description = "Rust SDK for MUXI AI platform"
 license = "MIT"
 repository = "https://github.com/muxi-ai/muxi-rust"
-documentation = "https://docs.rs/muxi"
+documentation = "https://docs.rs/muxi-rust"
 readme = "README.md"
 keywords = ["muxi", "ai", "sdk", "agents"]
 categories = ["api-bindings", "asynchronous"]

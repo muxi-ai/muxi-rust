@@ -132,7 +132,7 @@ jobs:
             Add to Cargo.toml:
             ```toml
             [dependencies]
-            muxi = "${{ steps.version.outputs.version }}"
+            muxi-rust = "${{ steps.version.outputs.version }}"
             ```
 
   sync_develop:

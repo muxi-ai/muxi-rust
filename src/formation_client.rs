@@ -111,6 +111,14 @@ impl FormationClient {
     }
     pub async fn get_session(&self, session_id: &str, user_id: &str) -> Result<Value> { self.request("GET", &format!("/sessions/{}", session_id), None, None, false, Some(user_id)).await }
     pub async fn get_session_messages(&self, session_id: &str, user_id: &str) -> Result<Value> { self.request("GET", &format!("/sessions/{}/messages", session_id), None, None, false, Some(user_id)).await }
+    pub async fn restore_session(&self, session_id: &str, user_id: &str, messages: Value) -> Result<Value> {
+        self.request("POST", &format!("/sessions/{}/restore", session_id), None, Some(json!({"messages": messages})), false, Some(user_id)).await
+    }
+    
+    // Requests
+    pub async fn get_requests(&self, user_id: &str) -> Result<Value> { self.request("GET", "/requests", None, None, false, Some(user_id)).await }
+    pub async fn get_request_status(&self, request_id: &str, user_id: &str) -> Result<Value> { self.request("GET", &format!("/requests/{}", request_id), None, None, false, Some(user_id)).await }
+    pub async fn cancel_request(&self, request_id: &str, user_id: &str) -> Result<Value> { self.request("DELETE", &format!("/requests/{}", request_id), None, None, false, Some(user_id)).await }
     
     // Memory
     pub async fn get_memory_config(&self) -> Result<Value> { self.request("GET", "/memory", None, None, true, None).await }
@@ -124,6 +132,16 @@ impl FormationClient {
     }
     pub async fn delete_memory(&self, user_id: &str, memory_id: &str) -> Result<Value> {
         self.request("DELETE", &format!("/memories/{}", memory_id), Some(vec![("user_id", user_id.to_string())]), None, false, Some(user_id)).await
+    }
+    pub async fn get_user_buffer(&self, user_id: &str) -> Result<Value> {
+        self.request("GET", "/memory/buffer", Some(vec![("user_id", user_id.to_string())]), None, false, None).await
+    }
+    pub async fn clear_user_buffer(&self, user_id: &str) -> Result<Value> {
+        self.request("DELETE", "/memory/buffer", Some(vec![("user_id", user_id.to_string())]), None, false, None).await
+    }
+    pub async fn clear_all_buffers(&self) -> Result<Value> { self.request("DELETE", "/memory/buffer", None, None, true, None).await }
+    pub async fn clear_session_buffer(&self, user_id: &str, session_id: &str) -> Result<Value> {
+        self.request("DELETE", &format!("/memory/buffer/{}", session_id), Some(vec![("user_id", user_id.to_string())]), None, false, None).await
     }
     pub async fn get_buffer_stats(&self) -> Result<Value> { self.request("GET", "/memory/stats", None, None, true, None).await }
     
@@ -142,16 +160,35 @@ impl FormationClient {
     pub async fn get_async_config(&self) -> Result<Value> { self.request("GET", "/async", None, None, true, None).await }
     pub async fn get_a2a_config(&self) -> Result<Value> { self.request("GET", "/a2a", None, None, true, None).await }
     pub async fn get_logging_config(&self) -> Result<Value> { self.request("GET", "/logging", None, None, true, None).await }
+    pub async fn get_logging_destinations(&self) -> Result<Value> { self.request("GET", "/logging/destinations", None, None, true, None).await }
     pub async fn get_overlord_config(&self) -> Result<Value> { self.request("GET", "/overlord", None, None, true, None).await }
+    pub async fn get_overlord_soul(&self) -> Result<Value> { self.request("GET", "/overlord/soul", None, None, true, None).await }
     pub async fn get_llm_settings(&self) -> Result<Value> { self.request("GET", "/llm/settings", None, None, true, None).await }
     
-    // Triggers / Audit
+    // Triggers / SOPs / Audit
     pub async fn get_triggers(&self) -> Result<Value> { self.request("GET", "/triggers", None, None, false, None).await }
     pub async fn get_trigger(&self, name: &str) -> Result<Value> { self.request("GET", &format!("/triggers/{}", name), None, None, false, None).await }
     pub async fn fire_trigger(&self, name: &str, data: Value, is_async: bool, user_id: Option<&str>) -> Result<Value> {
         self.request("POST", &format!("/triggers/{}", name), Some(vec![("async", is_async.to_string())]), Some(data), false, user_id).await
     }
+    pub async fn get_sops(&self) -> Result<Value> { self.request("GET", "/sops", None, None, false, None).await }
+    pub async fn get_sop(&self, name: &str) -> Result<Value> { self.request("GET", &format!("/sops/{}", name), None, None, false, None).await }
     pub async fn get_audit_log(&self) -> Result<Value> { self.request("GET", "/audit", None, None, true, None).await }
+    pub async fn clear_audit_log(&self) -> Result<Value> { self.request("DELETE", "/audit?confirm=clear-audit-log", None, None, true, None).await }
+    
+    // Credentials
+    pub async fn list_credential_services(&self) -> Result<Value> { self.request("GET", "/credentials/services", None, None, true, None).await }
+    pub async fn list_credentials(&self, user_id: &str) -> Result<Value> { self.request("GET", "/credentials", None, None, false, Some(user_id)).await }
+    pub async fn get_credential(&self, credential_id: &str, user_id: &str) -> Result<Value> { self.request("GET", &format!("/credentials/{}", credential_id), None, None, false, Some(user_id)).await }
+    pub async fn create_credential(&self, user_id: &str, payload: Value) -> Result<Value> { self.request("POST", "/credentials", None, Some(payload), false, Some(user_id)).await }
+    pub async fn delete_credential(&self, credential_id: &str, user_id: &str) -> Result<Value> { self.request("DELETE", &format!("/credentials/{}", credential_id), None, None, false, Some(user_id)).await }
+    
+    // User identifiers
+    pub async fn get_user_identifiers(&self, user_id: &str) -> Result<Value> { self.request("GET", &format!("/users/identifiers/{}", user_id), None, None, true, None).await }
+    pub async fn link_user_identifier(&self, muxi_user_id: &str, identifiers: Value) -> Result<Value> {
+        self.request("POST", "/users/identifiers", None, Some(json!({"muxi_user_id": muxi_user_id, "identifiers": identifiers})), true, None).await
+    }
+    pub async fn unlink_user_identifier(&self, identifier: &str) -> Result<Value> { self.request("DELETE", &format!("/users/identifiers/{}", identifier), None, None, true, None).await }
     
     // Streaming
     pub fn stream_events<'a>(&'a self, user_id: &'a str) -> impl Stream<Item = Result<SseEvent>> + 'a {

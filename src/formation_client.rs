@@ -155,6 +155,9 @@ impl FormationClient {
         self.request("POST", "/scheduler/jobs", None, Some(json!({"type": job_type, "schedule": schedule, "message": message, "user_id": user_id})), true, None).await
     }
     pub async fn delete_scheduler_job(&self, job_id: &str) -> Result<Value> { self.request("DELETE", &format!("/scheduler/jobs/{}", job_id), None, None, true, None).await }
+    pub async fn update_scheduler_job(&self, job_id: &str, updates: Value) -> Result<Value> { self.request("PUT", &format!("/scheduler/jobs/{}", job_id), None, Some(updates), true, None).await }
+    pub async fn pause_scheduler_job(&self, job_id: &str) -> Result<Value> { self.request("POST", &format!("/scheduler/jobs/{}/pause", job_id), None, None, true, None).await }
+    pub async fn resume_scheduler_job(&self, job_id: &str) -> Result<Value> { self.request("POST", &format!("/scheduler/jobs/{}/resume", job_id), None, None, true, None).await }
     
     // Config endpoints
     pub async fn get_async_config(&self) -> Result<Value> { self.request("GET", "/async", None, None, true, None).await }

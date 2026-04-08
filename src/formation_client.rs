@@ -2,7 +2,7 @@ use crate::{errors::{MuxiError, Result}, SseEvent, VERSION, version_check};
 use reqwest::Client;
 use serde_json::{json, Value};
 use std::time::Duration;
-use futures::Stream;
+use futures::{Stream, StreamExt};
 use async_stream::stream;
 
 #[derive(Clone)]
@@ -226,26 +226,47 @@ impl FormationClient {
     fn stream_sse_post<'a>(&'a self, path: &'a str, body: Value, use_admin: bool, user_id: Option<&'a str>) -> impl Stream<Item = Result<SseEvent>> + 'a {
         stream! {
             let url = self.build_url(path, None);
-            let mut req = self.client.post(&url);
+            let mut req = self.stream_client().post(&url);
             req = self.add_headers(req, use_admin, user_id, true);
             req = req.header("Accept", "text/event-stream").json(&body);
             
             match req.send().await {
                 Ok(r) => {
-                    let mut current_event: Option<String> = None;
-                    let mut data_parts: Vec<String> = Vec::new();
-                    let text = r.text().await.unwrap_or_default();
-                    for line in text.lines() {
-                        if line.starts_with(':') { continue; }
-                        if line.is_empty() {
-                            if !data_parts.is_empty() {
-                                yield Ok(SseEvent { event: current_event.take().unwrap_or_else(|| "message".to_string()), data: data_parts.join("\n") });
-                                data_parts.clear();
-                            }
-                            continue;
+                    let r = match self.ensure_stream_response(r).await {
+                        Ok(r) => r,
+                        Err(err) => {
+                            yield Err(err);
+                            return;
                         }
-                        if let Some(evt) = line.strip_prefix("event:") { current_event = Some(evt.trim().to_string()); }
-                        else if let Some(d) = line.strip_prefix("data:") { data_parts.push(d.trim().to_string()); }
+                    };
+                    let mut parser = SseEventParser::default();
+                    let mut body_stream = r.bytes_stream();
+                    while let Some(chunk) = body_stream.next().await {
+                        match chunk {
+                            Ok(bytes) => match parser.push_chunk(String::from_utf8_lossy(&bytes).as_ref()) {
+                                Ok(events) => {
+                                    for event in events {
+                                        yield Ok(event);
+                                    }
+                                }
+                                Err(err) => {
+                                    yield Err(err);
+                                    return;
+                                }
+                            },
+                            Err(err) => {
+                                yield Err(MuxiError::Request(err));
+                                return;
+                            }
+                        }
+                    }
+                    match parser.finish() {
+                        Ok(events) => {
+                            for event in events {
+                                yield Ok(event);
+                            }
+                        }
+                        Err(err) => yield Err(err),
                     }
                 }
                 Err(e) => yield Err(MuxiError::Request(e)),
@@ -256,26 +277,47 @@ impl FormationClient {
     fn stream_sse_get<'a>(&'a self, path: &'a str, params: Option<Vec<(&'a str, String)>>, use_admin: bool, user_id: Option<&'a str>) -> impl Stream<Item = Result<SseEvent>> + 'a {
         stream! {
             let url = self.build_url(path, params);
-            let mut req = self.client.get(&url);
+            let mut req = self.stream_client().get(&url);
             req = self.add_headers(req, use_admin, user_id, false);
             req = req.header("Accept", "text/event-stream");
             
             match req.send().await {
                 Ok(r) => {
-                    let mut current_event: Option<String> = None;
-                    let mut data_parts: Vec<String> = Vec::new();
-                    let text = r.text().await.unwrap_or_default();
-                    for line in text.lines() {
-                        if line.starts_with(':') { continue; }
-                        if line.is_empty() {
-                            if !data_parts.is_empty() {
-                                yield Ok(SseEvent { event: current_event.take().unwrap_or_else(|| "message".to_string()), data: data_parts.join("\n") });
-                                data_parts.clear();
-                            }
-                            continue;
+                    let r = match self.ensure_stream_response(r).await {
+                        Ok(r) => r,
+                        Err(err) => {
+                            yield Err(err);
+                            return;
                         }
-                        if let Some(evt) = line.strip_prefix("event:") { current_event = Some(evt.trim().to_string()); }
-                        else if let Some(d) = line.strip_prefix("data:") { data_parts.push(d.trim().to_string()); }
+                    };
+                    let mut parser = SseEventParser::default();
+                    let mut body_stream = r.bytes_stream();
+                    while let Some(chunk) = body_stream.next().await {
+                        match chunk {
+                            Ok(bytes) => match parser.push_chunk(String::from_utf8_lossy(&bytes).as_ref()) {
+                                Ok(events) => {
+                                    for event in events {
+                                        yield Ok(event);
+                                    }
+                                }
+                                Err(err) => {
+                                    yield Err(err);
+                                    return;
+                                }
+                            },
+                            Err(err) => {
+                                yield Err(MuxiError::Request(err));
+                                return;
+                            }
+                        }
+                    }
+                    match parser.finish() {
+                        Ok(events) => {
+                            for event in events {
+                                yield Ok(event);
+                            }
+                        }
+                        Err(err) => yield Err(err),
                     }
                 }
                 Err(e) => yield Err(MuxiError::Request(e)),
@@ -311,6 +353,37 @@ impl FormationClient {
         if let Some(uid) = user_id { req = req.header("X-Muxi-User-ID", uid); }
         if has_body { req = req.header("Content-Type", "application/json"); }
         req
+    }
+
+    fn stream_client(&self) -> Client {
+        Client::builder().build().expect("stream client")
+    }
+
+    async fn ensure_stream_response(&self, resp: reqwest::Response) -> std::result::Result<reqwest::Response, MuxiError> {
+        if !resp.status().is_client_error() && !resp.status().is_server_error() {
+            return Ok(resp);
+        }
+
+        let status = resp.status().as_u16();
+        let retry_after = resp.headers().get("Retry-After").and_then(|v| v.to_str().ok()).and_then(|v| v.parse().ok());
+        let body = resp.text().await.unwrap_or_default();
+        let (code, message) = if let Ok(json) = serde_json::from_str::<Value>(&body) {
+            (
+                json.get("type")
+                    .or(json.get("code"))
+                    .or(json.get("error"))
+                    .and_then(|v| v.as_str())
+                    .map(String::from),
+                json.get("error")
+                    .or(json.get("message"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("Unknown error")
+                    .to_string(),
+            )
+        } else {
+            (None, if body.is_empty() { "Unknown error".to_string() } else { body })
+        };
+        Err(MuxiError::from_response(status, code, message, retry_after))
     }
     
     async fn handle_response(&self, resp: reqwest::Response) -> Result<Value> {
@@ -349,5 +422,153 @@ impl FormationClient {
             }
         }
         value
+    }
+}
+
+#[derive(Default)]
+struct SseEventParser {
+    buffer: String,
+    current_event: Option<String>,
+    data_parts: Vec<String>,
+}
+
+impl SseEventParser {
+    fn push_chunk(&mut self, chunk: &str) -> Result<Vec<SseEvent>> {
+        self.buffer.push_str(chunk);
+        let mut events = Vec::new();
+
+        while let Some(idx) = self.buffer.find('\n') {
+            let mut line = self.buffer[..idx].to_string();
+            self.buffer.drain(..=idx);
+            if line.ends_with('\r') {
+                line.pop();
+            }
+            if let Some(event) = self.process_line(&line)? {
+                events.push(event);
+            }
+        }
+
+        Ok(events)
+    }
+
+    fn finish(&mut self) -> Result<Vec<SseEvent>> {
+        let mut events = Vec::new();
+        if !self.buffer.is_empty() {
+            let line = std::mem::take(&mut self.buffer);
+            if let Some(event) = self.process_line(line.trim_end_matches('\r'))? {
+                events.push(event);
+            }
+        }
+        if let Some(event) = self.flush_event()? {
+            events.push(event);
+        }
+        Ok(events)
+    }
+
+    fn process_line(&mut self, line: &str) -> Result<Option<SseEvent>> {
+        if line.starts_with(':') {
+            return Ok(None);
+        }
+        if line.is_empty() {
+            return self.flush_event();
+        }
+
+        let (field, value) = split_sse_field(line);
+        match field {
+            "event" => self.current_event = Some(value.to_string()),
+            "data" => self.data_parts.push(value.to_string()),
+            _ => {}
+        }
+        Ok(None)
+    }
+
+    fn flush_event(&mut self) -> Result<Option<SseEvent>> {
+        if self.current_event.is_none() && self.data_parts.is_empty() {
+            return Ok(None);
+        }
+
+        let event = SseEvent {
+            event: self.current_event.take().unwrap_or_else(|| "message".to_string()),
+            data: self.data_parts.join("\n"),
+        };
+        self.data_parts.clear();
+
+        if event.event == "error" {
+            return Err(parse_route_error(&event.data));
+        }
+
+        Ok(Some(event))
+    }
+}
+
+fn split_sse_field(line: &str) -> (&str, &str) {
+    if let Some((field, value)) = line.split_once(':') {
+        (field, value.strip_prefix(' ').unwrap_or(value))
+    } else {
+        (line, "")
+    }
+}
+
+fn parse_route_error(data: &str) -> MuxiError {
+    if let Ok(json) = serde_json::from_str::<Value>(data) {
+        let code = json.get("type")
+            .or(json.get("code"))
+            .or(json.get("error"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("STREAM_ERROR")
+            .to_string();
+        let message = json.get("error")
+            .or(json.get("message"))
+            .and_then(|v| v.as_str())
+            .unwrap_or(if data.is_empty() { "stream error" } else { data })
+            .to_string();
+        return MuxiError::Unknown { code, message, status: 0 };
+    }
+
+    MuxiError::Unknown {
+        code: "STREAM_ERROR".to_string(),
+        message: if data.is_empty() { "stream error".to_string() } else { data.to_string() },
+        status: 0,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn flushes_event_only_done_frame() {
+        let mut parser = SseEventParser::default();
+        assert!(parser.process_line(": keepalive").unwrap().is_none());
+        assert!(parser.process_line("").unwrap().is_none());
+        assert!(parser.process_line("event: done").unwrap().is_none());
+
+        let event = parser.process_line("").unwrap();
+        assert_eq!(event.unwrap().event, "done");
+    }
+
+    #[test]
+    fn preserves_multiline_data() {
+        let mut parser = SseEventParser::default();
+        parser.process_line("event: planning").unwrap();
+        parser.process_line("data: one").unwrap();
+        parser.process_line("data: two").unwrap();
+
+        let event = parser.process_line("").unwrap().unwrap();
+        assert_eq!(event.event, "planning");
+        assert_eq!(event.data, "one\ntwo");
+    }
+
+    #[test]
+    fn route_error_becomes_muxi_error() {
+        let err = parse_route_error(r#"{"error":"boom","type":"RUNTIME_ERROR"}"#);
+        match err {
+            MuxiError::Unknown { code, message, status } => {
+                assert_eq!(code, "RUNTIME_ERROR");
+                assert_eq!(message, "boom");
+                assert_eq!(status, 0);
+            }
+            other => panic!("unexpected error: {other:?}"),
+        }
     }
 }

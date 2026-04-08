@@ -1,6 +1,6 @@
 [package]
 name = "muxi-rust"
-version = "0.20260324.0"
+version = "0.20260408.0"
 edition = "2021"
 authors = ["MUXI AI <support@muxi.ai>"]
 description = "Rust SDK for MUXI AI platform"
